@@ -352,5 +352,48 @@ namespace tests
             Assert.True(server.BytesReceived > 0);
             Assert.True(!server.Errors);
         }
+
+        [Fact(DisplayName = "WebSocket frame size validation test")]
+        public void WsFrameSizeValidationTest()
+        {
+            string address = "127.0.0.1";
+            int port = 8084;
+
+            var server = new EchoWsServer(IPAddress.Any, port);
+            Assert.True(server.Start());
+            while (!server.IsStarted)
+                Thread.Yield();
+
+            var client = new EchoWsClient(address, port);
+            Assert.True(client.ConnectAsync());
+            while (!client.IsWsConnected || (server.Clients != 1))
+                Thread.Yield();
+
+            byte[] malformedFrame = new byte[20];
+            malformedFrame[0] = 0x81;
+            malformedFrame[1] = 0xFF;
+
+            malformedFrame[2] = 0x0F;
+            for (int i = 3; i < 10; i++)
+                malformedFrame[i] = 0xFF;
+
+            // Set mask key (4 bytes)
+            malformedFrame[10] = 0x11;
+            malformedFrame[11] = 0x22;
+            malformedFrame[12] = 0x33;
+            malformedFrame[13] = 0x44;
+
+            client.Send(malformedFrame, 0, malformedFrame.Length);
+
+            Thread.Sleep(100);
+
+            Assert.True(client.CloseAsync(1000));
+            while (client.IsWsConnected || (server.Clients != 0))
+                Thread.Yield();
+
+            Assert.True(server.Stop());
+            while (server.IsStarted)
+                Thread.Yield();
+        }
     }
 }
